@@ -248,10 +248,6 @@ edad_max_data = int(pd.to_numeric(df[COL_EDAD], errors="coerce").max()) if df[CO
 edad_min_data = max(0, edad_min_data)
 edad_max_data = max(edad_min_data, edad_max_data)
 
-# Estado (solo para intervenciones)
-if "interv_all" not in st.session_state:
-    st.session_state.interv_all = True
-
 with st.sidebar:
     st.markdown("### Filtros")
 
@@ -269,16 +265,12 @@ with st.sidebar:
         step=1,
     )
 
-    st.session_state.interv_all = st.checkbox(
-        "Seleccionar todas las intervenciones",
-        value=st.session_state.interv_all,
-    )
-    interv_default_label = interv_options_label if st.session_state.interv_all else []
     interv_selected_label = st.multiselect(
         "Intervención",
         options=interv_options_label,
-        default=interv_default_label,
+        default=interv_options_label,   # por defecto: todas seleccionadas
     )
+
 
 # Labels -> valores reales
 ut_selected_raw = [ut_label_to_raw[x] for x in ut_selected_label] if ut_selected_label else []
