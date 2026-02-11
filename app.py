@@ -432,7 +432,7 @@ sex_unique = (
 )
 
 with row1[0]:
-    card_title("Número de participantes por sexo")
+    card_title("N° Participantes por sexo")
     base = (
         alt.Chart(sex_unique)
         .mark_bar()
@@ -464,7 +464,7 @@ cse_sexo = (
 )
 
 with row1[1]:
-    card_title("Clasificación socioeconómica por sexo")
+    card_title("N° Participantes por CSE")
     stacked = (
         alt.Chart(cse_sexo)
         .mark_bar()
@@ -507,7 +507,7 @@ age_sexo = (
 )
 
 with row1[2]:
-    card_title("Grupo de edad por sexo")
+    card_title("N° Participantes por grupo de edad")
     stacked = (
         alt.Chart(age_sexo)
         .mark_bar()
@@ -546,7 +546,7 @@ interv_sexo["ord"] = interv_sexo["INTERV_label"].map(order_map).fillna(999).asty
 interv_sexo = interv_sexo.sort_values(["ord", "INTERV_label"])
 
 with row1[3]:
-    card_title("Número de participantes por intervención y sexo")
+    card_title("N° Participantes por intervención")
     stacked = (
         alt.Chart(interv_sexo)
         .mark_bar()
@@ -595,7 +595,7 @@ dni_interv_dist_sexo = (
 )
 
 with row2[0]:
-    card_title("Participantes según número de intervenciones")
+    card_title("N° Participantes según número de intervenciones")
     stacked = (
         alt.Chart(dni_interv_dist_sexo)
         .mark_bar()
@@ -635,7 +635,7 @@ interv_acts["ord"] = interv_acts["INTERV_label"].map(order_map).fillna(999).asty
 interv_acts = interv_acts.sort_values(["ord", "actividades"], ascending=[True, False])
 
 with row2[1]:
-    card_title("Número de actividades por intervención")
+    card_title("N° actividades por intervención")
     bars = (
         alt.Chart(interv_acts)
         .mark_bar(color=P_DARK)
