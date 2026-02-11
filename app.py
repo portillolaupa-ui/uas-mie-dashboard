@@ -3,6 +3,7 @@ import streamlit as st
 import pydeck as pdk
 import altair as alt
 import re
+from io import BytesIO
 
 st.set_page_config(page_title="UAS - Mi Independencia Económica", layout="wide")
 
@@ -293,6 +294,18 @@ def apply_filters(df_in: pd.DataFrame) -> pd.DataFrame:
 df_f = apply_filters(df)
 
 #==================================================================================================
+# EXPORTACIÓN A EXCEL (Streamlit)
+#==================================================================================================
+@st.cache_data(show_spinner=False)
+def to_excel_bytes(df_in: pd.DataFrame) -> bytes:
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df_in.to_excel(writer, index=False, sheet_name="Data_filtrada")
+    return output.getvalue()
+
+excel_bytes = to_excel_bytes(df_f)
+
+#==================================================================================================
 # Capa de presentación (labels) – no altera el original
 #==================================================================================================
 df_f["SEXO_label"] = (
@@ -341,8 +354,24 @@ dni_18_29_mujeres = int(dni_18_29_sexo.get("Femenino", 0))
 #==================================================================================================
 # Header
 #==================================================================================================
-st.title("Mi Independencia Económica")
-st.markdown('<div class="subtitle">Unidad de Acompañamiento y Servicios Complementarios</div>', unsafe_allow_html=True)
+tcol1, tcol2 = st.columns([6, 1], vertical_alignment="center")
+
+with tcol1:
+    st.title("Mi Independencia Económica")
+    st.markdown(
+        '<div class="subtitle">Unidad de Acompañamiento y Servicios Complementarios</div>',
+        unsafe_allow_html=True
+    )
+
+with tcol2:
+    st.markdown("<div style='height: 0.65rem;'></div>", unsafe_allow_html=True)
+    st.download_button(
+        label="Descargar reporte (Excel)",
+        data=excel_bytes,
+        file_name="reporte_mi_independencia_economica.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
 
 # Fila 1: tarjetas principales (NO TOCAR)
 c1, c2, c3, c4, c5 = st.columns(5)
