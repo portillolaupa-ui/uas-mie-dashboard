@@ -8,7 +8,7 @@ from io import BytesIO
 st.set_page_config(page_title="UAS - Mi Independencia Económica", layout="wide")
 
 #----------------------------------------------------------------------------------
-DATA_PATH = "data/actividades_db_mieuas_v4.1.0_20260902.parquet"
+DATA_PATH = "data/actividades_db_mieuas_v5.1.0_20260902.parquet"
 USE_PARQUET = DATA_PATH.lower().endswith(".parquet")
 #----------------------------------------------------------------------------------
 
