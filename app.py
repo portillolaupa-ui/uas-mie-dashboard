@@ -8,7 +8,7 @@ from io import BytesIO
 st.set_page_config(page_title="UAS - Mi Independencia Económica", layout="wide")
 
 #----------------------------------------------------------------------------------
-DATA_PATH = "data/actividades_db_mieuas_v5.2.0_20261202.parquet"
+DATA_PATH = "data/actividades_db_mieuas_v6.3.0_20261302.parquet"
 USE_PARQUET = DATA_PATH.lower().endswith(".parquet")
 #----------------------------------------------------------------------------------
 
@@ -266,6 +266,15 @@ with st.sidebar:
         step=1,
     )
 
+    edad_rango_completo = (edad_range[0] == edad_min_data) and (edad_range[1] == edad_max_data)
+
+    incluir_edad_no_registrada = st.toggle(
+        "Incluir edad no registrada",
+        value=True,
+        disabled=edad_rango_completo,
+        help="Solo aplica cuando el rango de edad está restringido."
+    )
+
     interv_selected_label = st.multiselect(
         "Intervención",
         options=interv_options_label,
@@ -278,13 +287,18 @@ ut_selected_raw = [ut_label_to_raw[x] for x in ut_selected_label] if ut_selected
 interv_selected_raw = [interv_label_to_raw[x] for x in interv_selected_label] if interv_selected_label else []
 
 def apply_filters(df_in: pd.DataFrame) -> pd.DataFrame:
-    dfx = df_in.copy()
+    dfx = df_in
 
     if COL_UT in dfx.columns and ut_selected_raw:
         dfx = dfx[dfx[COL_UT].astype("string").str.strip().isin(ut_selected_raw)]
 
-    if COL_EDAD in dfx.columns:
-        dfx = dfx[dfx[COL_EDAD].between(edad_range[0], edad_range[1], inclusive="both")]
+    if COL_EDAD in dfx.columns and not edad_rango_completo:
+        mask_edad = dfx[COL_EDAD].between(edad_range[0], edad_range[1], inclusive="both")
+
+        if incluir_edad_no_registrada:
+            mask_edad = mask_edad | dfx[COL_EDAD].isna()
+
+        dfx = dfx[mask_edad]
 
     if COL_INTERV in dfx.columns and interv_selected_raw:
         dfx = dfx[dfx[COL_INTERV].astype("string").str.strip().isin(interv_selected_raw)]
@@ -336,20 +350,48 @@ order_map = {k: i for i, k in enumerate(INTERV_LABEL_ORDER)}
 #==================================================================================================
 dni_total = df_f[COL_DNI].dropna().nunique()
 
-df_18_29 = df_f[df_f[COL_EDAD].between(18, 29, inclusive="both") & df_f[COL_DNI].notna()]
+dni_con_edad = df_f[df_f[COL_DNI].notna() & df_f[COL_EDAD].notna()][COL_DNI].nunique()
+dni_sin_edad = df_f[df_f[COL_DNI].notna() & df_f[COL_EDAD].isna()][COL_DNI].nunique()
+
+pct_con_edad = (dni_con_edad / dni_total * 100) if dni_total > 0 else 0
+pct_sin_edad = (dni_sin_edad / dni_total * 100) if dni_total > 0 else 0
+
+df_18_29 = df_f[
+    df_f[COL_DNI].notna()
+    & df_f[COL_EDAD].notna()
+    & df_f[COL_EDAD].between(18, 29, inclusive="both")
+]
+
 dni_18_29 = df_18_29[COL_DNI].nunique()
 
-dni_18_29_sexo = (
-    df_f[
-        df_f[COL_EDAD].between(18, 29, inclusive="both")
-        & df_f[COL_DNI].notna()
-        & df_f["SEXO_label"].notna()
-    ]
-    .groupby("SEXO_label")[COL_DNI].nunique()
+df_act_18_29 = df_f[
+    df_f[COL_EDAD].notna()
+    & df_f[COL_EDAD].between(18, 29, inclusive="both")
+]
+n_acts_18_29 = len(df_act_18_29)
+
+pct_18_29 = (dni_18_29 / dni_total * 100) if dni_total > 0 else 0
+
+avg_acts_18_29 = (
+    n_acts_18_29 / dni_18_29
+    if dni_18_29 > 0 else 0
 )
 
-dni_18_29_hombres = int(dni_18_29_sexo.get("Masculino", 0))
-dni_18_29_mujeres = int(dni_18_29_sexo.get("Femenino", 0))
+n_emp_18_29 = len(
+    df_act_18_29[df_act_18_29[COL_INTERV] == "CAPACITACION EMPLEABILIDAD"]
+)
+
+n_gest_18_29 = len(
+    df_act_18_29[df_act_18_29[COL_INTERV] == "CAPACITACION GESTION DE NEGOCIOS O EMPRENDIMIENTO"]
+)
+
+n_fin_18_29 = len(
+    df_act_18_29[df_act_18_29[COL_INTERV] == "CAPACITACION SERVICIOS FINANCIEROS"]
+)
+
+n_interc_18_29 = len(
+    df_act_18_29[df_act_18_29[COL_INTERV] == "INTERCAMBIO COMERCIAL"]
+)
 
 #==================================================================================================
 # Header
@@ -373,13 +415,43 @@ with tcol2:
         use_container_width=True,
     )
 
-# Fila 1: tarjetas principales (NO TOCAR)
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("N° participantes", f"{dni_total:,}")
-c2.metric("N° actividades registradas", f"{len(df_f):,}")
-c3.metric("N° 18–29 años", f"{dni_18_29:,}")
-c4.metric("18–29 años | ♂️ hombres", f"{dni_18_29_hombres}")
-c5.metric("18–29 años | ♀️ mujeres", f"{dni_18_29_mujeres}")
+# =========================
+# FILA 1 — Visión ejecutiva
+# =========================
+c1, c2, c3, c4, c5, c6 = st.columns(6)
+
+c1.metric("Participantes", f"{dni_total:,}")
+c2.metric("Actividades", f"{len(df_f):,}")
+c3.metric("% Jóvenes (18–29)", f"{pct_18_29:.1f}%")
+
+# =========================
+# FILA 2 — Detalle 18–29
+# =========================
+d1, d2, d3, d4, d5, d6 = st.columns(6)
+
+pct_emp_18_29 = (n_emp_18_29 / n_acts_18_29 * 100) if n_acts_18_29 > 0 else 0
+pct_gest_18_29 = (n_gest_18_29 / n_acts_18_29 * 100) if n_acts_18_29 > 0 else 0
+pct_fin_18_29 = (n_fin_18_29 / n_acts_18_29 * 100) if n_acts_18_29 > 0 else 0
+pct_interc_18_29 = (n_interc_18_29 / n_acts_18_29 * 100) if n_acts_18_29 > 0 else 0
+
+d1.metric("Jóvenes (18–29)", f"{dni_18_29:,}")
+d2.metric("Actividades 18–29", f"{n_acts_18_29:,}")
+
+d3.metric("Empleabilidad", f"{n_emp_18_29:,}", f"{pct_emp_18_29:.1f}%")
+d4.metric("Gestión negocios", f"{n_gest_18_29:,}", f"{pct_gest_18_29:.1f}%")
+d5.metric("Serv. financieros", f"{n_fin_18_29:,}", f"{pct_fin_18_29:.1f}%")
+d6.metric("Intercambio comercial", f"{n_interc_18_29:,}", f"{pct_interc_18_29:.1f}%")
+
+st.markdown(
+    f"""
+    <div style="font-size: 0.85rem; color: {P_MUTED}; margin-top: 0.4rem;">
+        Calidad de registro de edad:
+        <strong>{pct_con_edad:.1f}%</strong> con edad registrada
+        | <strong>{pct_sin_edad:.1f}%</strong> sin registro
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 st.markdown('<hr class="kpi-divider"/>', unsafe_allow_html=True)
 
@@ -496,9 +568,12 @@ with row1[1]:
 # (3) Grupo de edad por sexo (apilado) + total encima
 bins = [11, 17, 29, 44, 200]
 labels_age = ["12–17", "18–29", "30–44", "45+"]
+labels_age_full = labels_age + ["Edad no registrada"]
 
-df_age = df_f.dropna(subset=[COL_DNI, COL_EDAD, "SEXO_label"]).copy()
+df_age = df_f.dropna(subset=[COL_DNI, "SEXO_label"]).copy()
+
 df_age["Grupo_edad"] = pd.cut(df_age[COL_EDAD], bins=bins, labels=labels_age)
+df_age["Grupo_edad"] = df_age["Grupo_edad"].astype("string").fillna("Edad no registrada")
 
 age_sexo = (
     df_age.dropna(subset=["Grupo_edad"])
@@ -512,7 +587,7 @@ with row1[2]:
         alt.Chart(age_sexo)
         .mark_bar()
         .encode(
-            x=alt.X("Grupo_edad:N", title=None, sort=labels_age, axis=alt.Axis(labelAngle=0)),
+            x=alt.X("Grupo_edad:N", title=None, sort=labels_age_full, axis=alt.Axis(labelAngle=0)),
             y=alt.Y("participantes:Q", title=None),
             color=alt.Color("SEXO_label:N", scale=_sex_color_scale(), legend=alt.Legend(orient="bottom", title=None)),
             tooltip=[
@@ -528,7 +603,7 @@ with row1[2]:
         .transform_aggregate(total="sum(participantes)", groupby=["Grupo_edad"])
         .mark_text(dy=-6, fontSize=11, color=P_TEXT)
         .encode(
-            x=alt.X("Grupo_edad:N", sort=labels_age),
+            x=alt.X("Grupo_edad:N", sort=labels_age_full),
             y=alt.Y("total:Q"),
             text=alt.Text("total:Q", format=","),
         )
