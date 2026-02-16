@@ -4,11 +4,13 @@ import pydeck as pdk
 import altair as alt
 import re
 from io import BytesIO
+import os
+from datetime import datetime
 
 st.set_page_config(page_title="UAS - Mi Independencia Económica", layout="wide")
 
 #----------------------------------------------------------------------------------
-DATA_PATH = "data/actividades_db_mieuas_v6.3.0_20261302.parquet"
+DATA_PATH = "data/actividades_db_mieuas_v7.0.0_20261602.parquet"
 USE_PARQUET = DATA_PATH.lower().endswith(".parquet")
 #----------------------------------------------------------------------------------
 
@@ -24,6 +26,10 @@ COL_UT = "UT"
 COL_CSE = "CSE"
 COL_TIPO_ACT = "TIPO_DE_ACTIVIDAD"
 COL_ENTIDAD = "ENTIDAD_QUE_APOYA"
+# NUEVAS COLUMNAS (emprendimientos)
+COL_NEGOCIO = "NEGOCIO_EMPRENDIMIENTO"
+COL_CAT_NEG = "CATEGORIA_NEGOCIO"
+
 
 INTERV_ORDER = [
     "CAPACITACION EMPLEABILIDAD",
@@ -43,6 +49,24 @@ def load_data(path: str) -> pd.DataFrame:
 
 df = load_data(DATA_PATH).copy()
 
+# =========================
+# Fecha de la versión del dataset (archivo parquet)
+# =========================
+try:
+    file_ts = os.path.getmtime(DATA_PATH)
+    fecha_version = datetime.fromtimestamp(file_ts)
+except Exception:
+    fecha_version = None
+
+# =========================
+# Fecha real de actualización de datos
+# =========================
+if "FECHA_DE_INTEGRACION" in df.columns:
+    df["FECHA_DE_INTEGRACION"] = pd.to_datetime(df["FECHA_DE_INTEGRACION"], errors="coerce")
+    fecha_datos = df["FECHA_DE_INTEGRACION"].max()
+else:
+    fecha_datos = None
+
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # Normalizaciones mínimas
 df[COL_DNI] = df[COL_DNI].astype("string")
@@ -61,6 +85,11 @@ P_TEXT   = "#0F172A"   # texto oscuro
 P_MUTED  = "#5B6775"   # texto secundario
 P_GRID   = "#E6EEEC"   # grillas
 P_BORDER = "#E5E7EB"   # líneas / divisores
+# Paleta AZUL (segunda sección)
+B_DARK  = "#1E3A8A"   # azul marino (principal)
+B_MID   = "#3B82F6"   # azul medio
+B_LIGHT = "#BFDBFE"   # azul claro
+
 
 # sexo (sobrio)
 COLOR_MASC = P_DARK
@@ -269,7 +298,7 @@ with st.sidebar:
     edad_rango_completo = (edad_range[0] == edad_min_data) and (edad_range[1] == edad_max_data)
 
     incluir_edad_no_registrada = st.toggle(
-        "Incluir edad no registrada",
+        "Incluir No registrado",
         value=True,
         disabled=edad_rango_completo,
         help="Solo aplica cuando el rango de edad está restringido."
@@ -331,8 +360,15 @@ df_f["SEXO_label"] = (
 df_f["CSE_label"] = (
     df_f[COL_CSE].astype("string").str.strip().str.upper()
     .map(CSE_MAP)
-    .fillna(df_f[COL_CSE].astype("string").str.strip())
 )
+
+df_f["CSE_label"] = (
+    df_f["CSE_label"]
+    .astype("string")
+    .fillna("No registrado")
+)
+
+df_f.loc[df_f["CSE_label"].str.strip().eq(""), "CSE_label"] = "CSE no registrado"
 
 df_f["INTERV_label"] = (
     df_f[COL_INTERV].astype("string").str.strip().str.upper()
@@ -344,6 +380,12 @@ df_f["TIPO_ACT_label"] = df_f[COL_TIPO_ACT].astype("string").map(_normalize_inst
 df_f["ENTIDAD_label"] = df_f[COL_ENTIDAD].astype("string").map(_normalize_institutional)
 
 order_map = {k: i for i, k in enumerate(INTERV_LABEL_ORDER)}
+
+# UT en Title Case (para ejes/gráficos)
+if COL_UT in df_f.columns:
+    df_f["UT_label"] = df_f[COL_UT].astype("string").str.strip().map(_smart_title_case)
+else:
+    df_f["UT_label"] = pd.NA
 
 #==================================================================================================
 # KPIs (recalculados con filtros)
@@ -393,6 +435,35 @@ n_interc_18_29 = len(
     df_act_18_29[df_act_18_29[COL_INTERV] == "INTERCAMBIO COMERCIAL"]
 )
 
+# KPIs: Emprendimientos y Entidades (únicos)
+if COL_NEGOCIO in df_f.columns:
+    tmp_empr = df_f.copy()
+
+    tmp_empr["NEGOCIO_clean"] = (
+        tmp_empr[COL_NEGOCIO].astype("string").str.strip()
+        .replace({"": pd.NA, "nan": pd.NA, "NaN": pd.NA, "NAN": pd.NA})
+    )
+
+    n_empr_unicos = (
+        tmp_empr[
+            tmp_empr["NEGOCIO_clean"].notna()
+        ][COL_DNI]
+        .nunique()
+    )
+else:
+    n_empr_unicos = 0
+
+if COL_ENTIDAD in df_f.columns:
+    n_ent_unicas = (
+        df_f[COL_ENTIDAD].astype("string").str.strip()
+        .replace({"": pd.NA, "nan": pd.NA, "NaN": pd.NA, "NAN": pd.NA})
+        .dropna()
+        .map(_normalize_institutional)
+        .nunique()
+    )
+else:
+    n_ent_unicas = 0
+
 #==================================================================================================
 # Header
 #==================================================================================================
@@ -402,6 +473,12 @@ with tcol1:
     st.title("Mi Independencia Económica")
     st.markdown(
         '<div class="subtitle">Unidad de Acompañamiento y Servicios Complementarios</div>',
+        unsafe_allow_html=True
+    )
+
+    fecha_txt = "—" if (fecha_version is None) else fecha_version.strftime("%d/%m/%Y %H:%M")
+    st.markdown(
+        f'<div class="subtitle">Versión de base de datos: <strong>{fecha_txt}</strong></div>',
         unsafe_allow_html=True
     )
 
@@ -422,7 +499,8 @@ c1, c2, c3, c4, c5, c6 = st.columns(6)
 
 c1.metric("Participantes", f"{dni_total:,}")
 c2.metric("Actividades", f"{len(df_f):,}")
-c3.metric("% Jóvenes (18–29)", f"{pct_18_29:.1f}%")
+c3.metric("Emprendimientos", f"{n_empr_unicos:,}")
+c4.metric("Entidades aliadas", f"{n_ent_unicas:,}")
 
 # =========================
 # FILA 2 — Detalle 18–29
@@ -434,7 +512,7 @@ pct_gest_18_29 = (n_gest_18_29 / n_acts_18_29 * 100) if n_acts_18_29 > 0 else 0
 pct_fin_18_29 = (n_fin_18_29 / n_acts_18_29 * 100) if n_acts_18_29 > 0 else 0
 pct_interc_18_29 = (n_interc_18_29 / n_acts_18_29 * 100) if n_acts_18_29 > 0 else 0
 
-d1.metric("Jóvenes (18–29)", f"{dni_18_29:,}")
+d1.metric("Jóvenes 18–29", f"{dni_18_29:,}")
 d2.metric("Actividades 18–29", f"{n_acts_18_29:,}")
 
 d3.metric("Empleabilidad", f"{n_emp_18_29:,}", f"{pct_emp_18_29:.1f}%")
@@ -529,11 +607,15 @@ with row1[0]:
     card_caption("")
 
 # (2) CSE por sexo (apilado) + total encima
+
+CSE_LABEL_ORDER = ["Pobre extremo", "Pobre", "No pobre", "CSE no registrado"]
+
 cse_sexo = (
-    df_f.dropna(subset=[COL_DNI, "CSE_label", "SEXO_label"])
+    df_f.dropna(subset=[COL_DNI, "SEXO_label"])
     .groupby(["CSE_label", "SEXO_label"])[COL_DNI].nunique()
     .reset_index(name="participantes")
 )
+
 
 with row1[1]:
     card_title("N° Participantes por CSE")
@@ -541,7 +623,7 @@ with row1[1]:
         alt.Chart(cse_sexo)
         .mark_bar()
         .encode(
-            x=alt.X("CSE_label:N", title=None, sort="-y", axis=alt.Axis(labelAngle=0)),
+            x=alt.X("CSE_label:N", title=None, sort=CSE_LABEL_ORDER, axis=alt.Axis(labelAngle=0)),
             y=alt.Y("participantes:Q", title=None),
             color=alt.Color("SEXO_label:N", scale=_sex_color_scale(), legend=alt.Legend(orient="bottom", title=None)),
             tooltip=[
@@ -557,7 +639,7 @@ with row1[1]:
         .transform_aggregate(total="sum(participantes)", groupby=["CSE_label"])
         .mark_text(dy=-6, fontSize=11, color=P_TEXT)
         .encode(
-            x=alt.X("CSE_label:N", sort="-y"),
+            x=alt.X("CSE_label:N", sort=CSE_LABEL_ORDER),
             y=alt.Y("total:Q"),
             text=alt.Text("total:Q", format=","),
         )
@@ -568,12 +650,12 @@ with row1[1]:
 # (3) Grupo de edad por sexo (apilado) + total encima
 bins = [11, 17, 29, 44, 200]
 labels_age = ["12–17", "18–29", "30–44", "45+"]
-labels_age_full = labels_age + ["Edad no registrada"]
+labels_age_full = labels_age + ["No registrado"]
 
 df_age = df_f.dropna(subset=[COL_DNI, "SEXO_label"]).copy()
 
 df_age["Grupo_edad"] = pd.cut(df_age[COL_EDAD], bins=bins, labels=labels_age)
-df_age["Grupo_edad"] = df_age["Grupo_edad"].astype("string").fillna("Edad no registrada")
+df_age["Grupo_edad"] = df_age["Grupo_edad"].astype("string").fillna("No registrado")
 
 age_sexo = (
     df_age.dropna(subset=["Grupo_edad"])
@@ -611,7 +693,76 @@ with row1[2]:
     st.altair_chart(stacked + totals, use_container_width=True)
     card_caption("")
 
-# (4) Intervención por sexo (horizontal apilado) + total al final
+# (4) Participantes por UT (apilado por sexo) + total encima
+ut_sexo = (
+    df_f.dropna(subset=[COL_DNI, "UT_label", "SEXO_label"])
+    .groupby(["UT_label", "SEXO_label"])[COL_DNI].nunique()
+    .reset_index(name="participantes")
+)
+
+# orden UT por total desc
+ut_order = (
+    ut_sexo.groupby("UT_label")["participantes"].sum().sort_values(ascending=False).index.tolist()
+)
+
+with row1[3]:
+    card_title("Top 10: N° Participantes por UT")
+    # Top 10 UT por participantes
+    ut_tot = (
+        ut_sexo.groupby("UT_label")["participantes"]
+        .sum()
+        .reset_index()
+        .sort_values("participantes", ascending=False)
+        .head(10)
+    )
+
+    stacked = (
+        alt.Chart(
+            ut_sexo[ut_sexo["UT_label"].isin(ut_tot["UT_label"])]
+        )
+        .mark_bar()
+        .encode(
+            y=alt.Y(
+                "UT_label:N",
+                title=None,
+                sort="-x",
+                axis=alt.Axis(labelOverlap=False)
+            ),
+            x=alt.X("participantes:Q", title=None),
+            color=alt.Color(
+                "SEXO_label:N",
+                scale=_sex_color_scale(),
+                legend=alt.Legend(orient="bottom", title=None)
+            ),
+            tooltip=[
+                alt.Tooltip("UT_label:N", title="UT"),
+                alt.Tooltip("SEXO_label:N", title="Sexo"),
+                alt.Tooltip("participantes:Q", title="DNIs únicos"),
+            ],
+        )
+        .properties(height=300)
+    )
+
+    totals = (
+        alt.Chart(ut_tot)
+        .mark_text(align="left", dx=4, fontSize=11, color=P_TEXT)
+        .encode(
+            y=alt.Y("UT_label:N", sort="-x"),
+            x=alt.X("participantes:Q"),
+            text=alt.Text("participantes:Q", format=","),
+        )
+    )
+
+    st.altair_chart(stacked + totals, use_container_width=True)
+
+    card_caption("")
+
+#==================================================================================================
+# FILA 2: Actividades (Opción A)
+#==================================================================================================
+row2 = st.columns(4, gap="large")
+
+# (5) Participantes por intervención (horizontal apilado) + total al final
 interv_sexo = (
     df_f.dropna(subset=[COL_DNI, "INTERV_label", "SEXO_label"])
     .groupby(["INTERV_label", "SEXO_label"])[COL_DNI].nunique()
@@ -620,7 +771,7 @@ interv_sexo = (
 interv_sexo["ord"] = interv_sexo["INTERV_label"].map(order_map).fillna(999).astype(int)
 interv_sexo = interv_sexo.sort_values(["ord", "INTERV_label"])
 
-with row1[3]:
+with row2[0]:
     card_title("N° Participantes por intervención")
     stacked = (
         alt.Chart(interv_sexo)
@@ -628,7 +779,11 @@ with row1[3]:
         .encode(
             y=alt.Y("INTERV_label:N", title=None, sort=None),
             x=alt.X("participantes:Q", title=None),
-            color=alt.Color("SEXO_label:N", scale=_sex_color_scale(), legend=alt.Legend(orient="bottom", title=None)),
+            color=alt.Color(
+                "SEXO_label:N",
+                scale=_sex_color_scale(),
+                legend=alt.Legend(orient="bottom", title=None),
+            ),
             tooltip=[
                 alt.Tooltip("INTERV_label:N", title="Intervención"),
                 alt.Tooltip("SEXO_label:N", title="Sexo"),
@@ -650,11 +805,6 @@ with row1[3]:
     st.altair_chart(stacked + totals, use_container_width=True)
     card_caption("")
 
-#==================================================================================================
-# FILA 2: Actividades (Opción A)
-#==================================================================================================
-row2 = st.columns(4, gap="large")
-
 # (5) Nº intervenciones por participante + sexo (apilado) + total encima
 dni_interv_n_sexo = (
     df_f.dropna(subset=[COL_DNI, "SEXO_label", "INTERV_label"])
@@ -669,7 +819,7 @@ dni_interv_dist_sexo = (
     .reset_index(name="participantes")
 )
 
-with row2[0]:
+with row2[1]:
     card_title("N° Participantes según número de intervenciones")
     stacked = (
         alt.Chart(dni_interv_dist_sexo)
@@ -709,7 +859,7 @@ interv_acts = (
 interv_acts["ord"] = interv_acts["INTERV_label"].map(order_map).fillna(999).astype(int)
 interv_acts = interv_acts.sort_values(["ord", "actividades"], ascending=[True, False])
 
-with row2[1]:
+with row2[2]:
     card_title("N° actividades por intervención")
     bars = (
         alt.Chart(interv_acts)
@@ -750,7 +900,7 @@ tipo_acts = (
     .head(10)
 )
 
-with row2[2]:
+with row2[3]:
     card_title("Top 10: Tipos de actividad más frecuentes")
     bars = (
         alt.Chart(tipo_acts)
@@ -777,30 +927,186 @@ with row2[2]:
     st.altair_chart(bars + lab, use_container_width=True)
     card_caption("")
 
-# (8) Actividades por entidad (Top 10) + etiqueta al final
-ent_acts = (
-    df_f.dropna(subset=["ENTIDAD_label"])
-    .assign(ENTIDAD_label=lambda d: d["ENTIDAD_label"].astype("string").str.strip())
+st.markdown('<hr class="kpi-divider"/>', unsafe_allow_html=True)
+
+#==================================================================================================
+# SECCIÓN 2 (AZUL): Emprendimientos y Entidades
+#==================================================================================================
+
+# Labels para emprendimiento / categoría / entidad (solo para esta sección)
+df_s2 = df_f.copy()
+
+df_s2["UT_label"] = df_s2[COL_UT].astype("string").map(_smart_title_case)
+
+# Heredar UT_label en sección azul (por si df_s2 cambia luego)
+if "UT_label" not in df_s2.columns:
+    df_s2["UT_label"] = df_s2[COL_UT].astype("string").str.strip().map(_smart_title_case)
+
+# Emprendimiento
+if COL_NEGOCIO in df_s2.columns:
+    df_s2["NEGOCIO_label"] = (
+        df_s2[COL_NEGOCIO].astype("string").str.strip()
+        .replace({"": pd.NA, "nan": pd.NA, "NaN": pd.NA, "NAN": pd.NA})
+        .fillna("Sin emprendimiento")
+    )
+else:
+    df_s2["NEGOCIO_label"] = "Sin emprendimiento"
+
+# Categoría de negocio
+if COL_CAT_NEG in df_s2.columns:
+    df_s2["CAT_NEG_label"] = (
+        df_s2[COL_CAT_NEG].astype("string").str.strip()
+        .replace({"": pd.NA, "nan": pd.NA, "NaN": pd.NA, "NAN": pd.NA})
+        .fillna("Sin categoría")
+    )
+else:
+    df_s2["CAT_NEG_label"] = "Sin categoría"
+
+# Entidad (para esta sección: vacíos => "No registra entidad")
+df_s2["ENTIDAD_s2_label"] = (
+    df_s2[COL_ENTIDAD].astype("string").str.strip()
+    .replace({"": pd.NA, "nan": pd.NA, "NaN": pd.NA, "NAN": pd.NA})
+    .fillna("<na>")
+    .map(_normalize_institutional)
 )
-ent_acts = ent_acts[ent_acts["ENTIDAD_label"] != ""]
+
+row_s2 = st.columns(4, gap="large")
+
+cat_emp = (
+    df_s2.dropna(subset=[COL_DNI])
+    .groupby("CAT_NEG_label")[COL_DNI].nunique()
+    .reset_index(name="participantes")
+    .sort_values("participantes", ascending=False)
+)
+
+cat_emp = cat_emp[cat_emp["CAT_NEG_label"] != "Sin categoría"]
+
+
+with row_s2[0]:
+    card_title("N° emprendimientos por categoría")
+
+    h_cat = max(260, 18 * len(cat_emp))
+
+    bars = (
+        alt.Chart(cat_emp)
+        .mark_bar(color=B_DARK)
+        .encode(
+             y=alt.Y(
+                "CAT_NEG_label:N",
+                title=None,
+                sort="-x",
+                axis=alt.Axis(labelOverlap=False),
+            ),
+            x=alt.X("participantes:Q", title=None),
+            tooltip=[
+                alt.Tooltip("CAT_NEG_label:N", title="Categoría"),
+                alt.Tooltip("participantes:Q", title="DNIs únicos"),
+            ],
+        )
+        .properties(height=h_cat)
+    )
+    lab = (
+        alt.Chart(cat_emp)
+        .mark_text(align="left", dx=4, fontSize=11, color=P_TEXT)
+        .encode(
+            y=alt.Y("CAT_NEG_label:N", sort="-x", axis=alt.Axis(labelOverlap=False)),
+            x=alt.X("participantes:Q"),
+            text=alt.Text("participantes:Q", format=","),
+        )
+    )
+    st.altair_chart(bars + lab, use_container_width=True)
+    card_caption("")
+
+# 3) N° de emprendimientos por UT (DNIs únicos con emprendimiento, por UT)
+tmp_emp_ut = df_s2.dropna(subset=[COL_DNI]).copy()
+tmp_emp_ut = tmp_emp_ut[tmp_emp_ut["NEGOCIO_label"] != "Sin emprendimiento"]
+
+emp_ut = (
+    tmp_emp_ut.groupby("UT_label")[COL_DNI].nunique()
+    .reset_index(name="participantes")
+    .sort_values("participantes", ascending=False)
+    .head(10)
+)
+
+with row_s2[1]:
+    card_title("Top 10: N° de emprendimientos por UT")
+    bars = (
+        alt.Chart(emp_ut)
+        .mark_bar(color=B_DARK)
+        .encode(
+            y=alt.Y("UT_label:N", title=None, sort="-x", axis=alt.Axis(labelOverlap=False)),
+            x=alt.X("participantes:Q", title=None),
+            tooltip=[
+                alt.Tooltip("UT_label:N", title="UT"),
+                alt.Tooltip("participantes:Q", title="DNIs únicos con emprendimiento"),
+            ],
+        )
+        .properties(height=260)
+    )
+    lab = (
+        alt.Chart(emp_ut)
+        .mark_text(align="left", dx=4, fontSize=11, color=P_TEXT)
+        .encode(
+            y=alt.Y("UT_label:N", sort="-x"),
+            x=alt.X("participantes:Q"),
+            text=alt.Text("participantes:Q", format=","),
+        )
+    )
+    st.altair_chart(bars + lab, use_container_width=True)
+    card_caption("")
+
+ent_part = df_s2[df_s2["ENTIDAD_s2_label"] != "No registra entidad"].copy()
+ent_part = (
+    ent_part.dropna(subset=[COL_DNI])
+    .groupby("ENTIDAD_s2_label")[COL_DNI].nunique()
+    .reset_index(name="participantes")
+    .sort_values("participantes", ascending=False)
+    .head(10)
+)
+
+with row_s2[2]:
+    card_title("Top 10: Entidades con más participantes")
+    bars = (
+        alt.Chart(ent_part)
+        .mark_bar(color=B_DARK)
+        .encode(
+            y=alt.Y("ENTIDAD_s2_label:N", title=None, sort="-x"),
+            x=alt.X("participantes:Q", title=None),
+            tooltip=[alt.Tooltip("ENTIDAD_s2_label:N", title="Entidad"), alt.Tooltip("participantes:Q", title="DNIs únicos")],
+        )
+        .properties(height=260)
+    )
+    lab = (
+        alt.Chart(ent_part)
+        .mark_text(align="left", dx=4, fontSize=11, color=P_TEXT)
+        .encode(
+            y=alt.Y("ENTIDAD_s2_label:N", sort="-x"),
+            x=alt.X("participantes:Q"),
+            text=alt.Text("participantes:Q", format=","),
+        )
+    )
+    st.altair_chart(bars + lab, use_container_width=True)
+    card_caption("")
+
 ent_acts = (
-    ent_acts.groupby("ENTIDAD_label")
+    df_s2[df_s2["ENTIDAD_s2_label"] != "No registra entidad"]
+    .groupby("ENTIDAD_s2_label")
     .size()
     .reset_index(name="actividades")
     .sort_values("actividades", ascending=False)
     .head(10)
 )
 
-with row2[3]:
+with row_s2[3]:
     card_title("Top 10: Entidades por volumen de actividad")
     bars = (
         alt.Chart(ent_acts)
-        .mark_bar(color=P_DARK)
+        .mark_bar(color=B_DARK)
         .encode(
-            y=alt.Y("ENTIDAD_label:N", title=None, sort="-x"),
+            y=alt.Y("ENTIDAD_s2_label:N", title=None, sort="-x"),
             x=alt.X("actividades:Q", title=None),
             tooltip=[
-                alt.Tooltip("ENTIDAD_label:N", title="Entidad"),
+                alt.Tooltip("ENTIDAD_s2_label:N", title="Entidad"),
                 alt.Tooltip("actividades:Q", title="Registros"),
             ],
         )
@@ -810,7 +1116,7 @@ with row2[3]:
         alt.Chart(ent_acts)
         .mark_text(align="left", dx=4, fontSize=11, color=P_TEXT)
         .encode(
-            y=alt.Y("ENTIDAD_label:N", sort="-x"),
+            y=alt.Y("ENTIDAD_s2_label:N", sort="-x"),
             x=alt.X("actividades:Q"),
             text=alt.Text("actividades:Q", format=","),
         )
