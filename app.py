@@ -10,7 +10,7 @@ from datetime import datetime
 st.set_page_config(page_title="UAS - Mi Independencia Económica", layout="wide")
 
 #----------------------------------------------------------------------------------
-DATA_PATH = "data/actividades_db_mieuas_v7.0.0_20261602.parquet"
+DATA_PATH = "data/df_final_v8.0.0.parquet"
 USE_PARQUET = DATA_PATH.lower().endswith(".parquet")
 #----------------------------------------------------------------------------------
 
