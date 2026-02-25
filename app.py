@@ -53,8 +53,12 @@ df = load_data(DATA_PATH).copy()
 # Fecha de la versión del dataset (archivo parquet)
 # =========================
 try:
-    file_ts = os.path.getmtime(DATA_PATH)
-    fecha_version = datetime.fromtimestamp(file_ts)
+    m = re.search(r"_(\d{8})", os.path.basename(DATA_PATH))
+    if m:
+        s = m.group(1)  # "20261902"
+        fecha_version = datetime(int(s[0:4]), int(s[6:8]), int(s[4:6]))  # (YYYY, MM, DD)
+    else:
+        fecha_version = None
 except Exception:
     fecha_version = None
 
@@ -339,14 +343,14 @@ df_f = apply_filters(df)
 #==================================================================================================
 # EXPORTACIÓN A EXCEL (Streamlit)
 #==================================================================================================
-@st.cache_data(show_spinner=False)
-def to_excel_bytes(df_in: pd.DataFrame) -> bytes:
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df_in.to_excel(writer, index=False, sheet_name="Data_filtrada")
-    return output.getvalue()
+#@st.cache_data(show_spinner=False)
+#def to_excel_bytes(df_in: pd.DataFrame) -> bytes:
+#    output = BytesIO()
+#    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+#        df_in.to_excel(writer, index=False, sheet_name="Data_filtrada")
+#    return output.getvalue()
 
-excel_bytes = to_excel_bytes(df_f)
+#excel_bytes = to_excel_bytes(df_f)
 
 #==================================================================================================
 # Capa de presentación (labels) – no altera el original
@@ -476,7 +480,7 @@ with tcol1:
         unsafe_allow_html=True
     )
 
-    fecha_txt = "—" if (fecha_version is None) else fecha_version.strftime("%d/%m/%Y %H:%M")
+    fecha_txt = "—" if (fecha_version is None) else fecha_version.strftime("%d/%m/%Y") #%H:%M
     st.markdown(
         f'<div class="subtitle">Versión de base de datos: <strong>{fecha_txt}</strong></div>',
         unsafe_allow_html=True
@@ -484,13 +488,20 @@ with tcol1:
 
 with tcol2:
     st.markdown("<div style='height: 0.65rem;'></div>", unsafe_allow_html=True)
-    st.download_button(
-        label="Descargar reporte (Excel)",
-        data=excel_bytes,
-        file_name="reporte_mi_independencia_economica.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
+    
+    st.link_button(
+        "⬇️ Descargar Padrones por UT",
+        "https://drive.google.com/drive/folders/17YP__o3u63BIHN01ljX8CcNJkjgofPhC",
+        use_container_width=True
     )
+
+    #st.download_button(
+    #    label="Descargar reporte (Excel)",
+    #    data=excel_bytes,
+    #    file_name="reporte_mi_independencia_economica.xlsx",
+    #    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    #    use_container_width=True,
+    #)    
 
 # =========================
 # FILA 1 — Visión ejecutiva
