@@ -10,7 +10,7 @@ st.set_page_config(page_title="UAS - MIE 2026", layout="wide")
 # ==============================================================================
 # CONFIG
 # ==============================================================================
-DATA_EMP_PATH = "data/df_emp_20260408_093800.xls"
+DATA_EMP_PATH = "data/df_modulo-mie_sitc_20260413.xlsx"
 
 COL_VISITA_ID = "IDENTIFICADOR DE VISITA"
 COL_HOGAR = "CODIGO HOGAR"
